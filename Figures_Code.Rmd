@@ -1,0 +1,879 @@
+---
+title: "Final_Paper_Figures"
+author: "Grace Deitzler"
+date: "8/23/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#Load libraries 
+library(reshape2)
+library(nlme)
+library(ggplot2)
+library(ggpubr)
+library(tidyverse)
+library(rstatix)
+library(dplyr)
+library(plyr)
+library(smatr)
+library(magrittr)
+library(data.table)
+library(patchwork)
+library(annotate)
+library(phyloseq)
+library(rstatix)
+library(pbapply)
+library(DESeq2)
+library(DT)
+library(data.table)
+library(vegan)
+library(remotes)
+celatum_colors <- c('Yellow Orange' = "#FFA630",
+                    'Tea Green' = "#D7E8BA",
+                    'Cadet Blue' = "#4DA1A9",
+                    'Coral' = "#EF6F6C",
+                    'Sage' = "#BBC385",
+                    'Hyacinth' = '#94579E'
+                  
+                    
+)
+celatum_cols <- function(...) {
+  cols <- c(...)
+  
+  if (is.null(cols))
+    return (celatum_colors)
+  
+  celatum_colors[cols]
+}
+
+celatum_cols("Sage")
+
+celatum_palette <- list(
+  'main' = celatum_cols("Yellow Orange", "Coral", "Cadet Blue"),
+  'two' = celatum_cols("Hyacinth", "Sage"),
+  'three' = celatum_cols("Hyacinth", "Sage", "Tea Green")
+)
+
+celatum_pal <- function(palette = "main", reverse = FALSE, ...) {
+  pal <- celatum_palette[[palette]]
+  
+  if (reverse) pal <- rev(pal)
+  
+  colorRampPalette(pal, ...)
+}
+
+scale_color_celatum <- function(palette = "main", discrete = TRUE, reverse = FALSE, ...) {
+  pal <- celatum_pal(palette = palette, reverse = reverse)
+  
+  if (discrete) {
+    discrete_scale("colour", paste0("celatum_", palette), palette = pal, ...)
+  } else {
+    scale_color_gradientn(colours = pal(256), ...)
+  }
+}
+
+scale_fill_celatum <- function(palette = "main", discrete = TRUE, reverse = FALSE, ...) {
+  pal <- celatum_pal(palette = palette, reverse = reverse)
+  
+  if (discrete) {
+    discrete_scale("fill", paste0("celatum_", palette), palette = pal, ...)
+  } else {
+    scale_fill_gradientn(colours = pal(256), ...)
+  }
+}
+```
+
+Code for the final figures in the ASD Celatum Paper.
+
+
+## Sociability: Fig 2
+
+### Data preparation
+```{r}
+
+#read in the new file with no naclbact
+soc_n <- read.csv("Sociability_Clean_no_naclbact.csv")
+
+## removing stage 1
+social <- soc_n[soc_n$Stage != "Stage 1",]
+
+#Time
+social_time <- social[colnames(social) %in% c("Time_middle", "Time_new_zone","Time_old_zone", "Stage", "Treatment", "Gender", "Distance_total")]
+
+#separate the two stages
+social_time_Stage_2<-social_time[ social_time$Stage == "Stage 2",]
+social_time_Stage_3<-social_time[social_time$Stage == "Stage 3",]
+
+colnames(social_time_Stage_2)<-c("Amendment", "Sex", "Stage", "Distance", "Center", "Stranger 1","Empty Cup")
+colnames(social_time_Stage_3)<-c("Amendment", "Sex", "Stage", "Distance", "Center", "Stranger 2","Stranger 1")
+
+#change the dataframe order 
+#social_time_Stage_2<-social_time_Stage_2[,c(1,2,3,4,6,5)]
+#social_time_Stage_3<-social_time_Stage_3[,c(1,2,3,4,6,5)]
+
+#Stage 2
+compare_stage2 <- list(c("Center", "Stranger 1"), c("Center", "Empty Cup"), c("Stranger 1", "Empty Cup"))
+
+time_stranger1 <- social_time_Stage_2 %>% dplyr::select(Amendment, Sex, `Stranger 1`)
+time_emptycup <- social_time_Stage_2 %>% dplyr::select(Amendment, Sex, `Empty Cup`)
+time_center1 <- social_time_Stage_2 %>% dplyr::select(Amendment, Sex, `Center`)
+distance <- social_time_Stage_2 %>% dplyr::select(Amendment, Sex, `Distance`)
+
+
+compare_tx= list(c("PolyIC-Bact", "PolyIC-AJ"), c("NaCl-AJ", "PolyIC-AJ"), c("NaCl-AJ", "PolyIC-Bact"))
+compare_sex = list(c("F", "M"))
+
+```
+
+## Sociability: Stranger 1
+
+```{r}
+soc_n1 <- ggplot(data= reshape2::melt(time_stranger1), aes(x= Amendment, y= value, group=Amendment)) + 
+geom_boxplot(aes(fill= Amendment)) +  
+xlab("") + geom_jitter() +
+ylab("Time (s)") + 
+facet_wrap(~Sex) +  
+scale_fill_celatum(palette = "main") +  
+  stat_compare_means(comparisons = compare_tx,method = "t.test", hide.ns = TRUE) +
+   ggtitle("Sociability: Time spent with Stranger 1")+ 
+  theme(legend.position = "none") +
+  theme_bw()+
+     theme(text = element_text(size=14),
+axis.text.x = element_text(angle=90, hjust=1)) 
+soc_n1
+
+soc_n_all <- ggplot(data= reshape2::melt(time_stranger1), aes(x= Amendment, y= value, group=Amendment)) + 
+geom_boxplot(aes(fill= Amendment)) +  
+xlab("") + geom_jitter() +
+ylab("Time (s)") + 
+#facet_wrap(~Sex) +  
+scale_fill_celatum(palette = "main") +  
+  stat_compare_means(comparisons = compare_tx,method = "t.test", hide.ns = TRUE) +
+   ggtitle("Sociability: Time spent with Stranger 1")+ 
+  theme(legend.position = "none") +
+  theme_bw()+
+     theme(text = element_text(size=14),
+           
+           
+        axis.text.x = element_text(angle=90, hjust=1)) 
+soc_n_all
+
+
+
+ggsave("sociability1_all.tiff", dpi = 800, plot = soc_n_all)
+```
+
+
+## Social Novelty: Stranger 2
+
+```{r}
+compare_stage3 <- list(c("Center", "Stranger 1"), c("Center", "Stranger 2"), c("Stranger 1", "Stranger 2"))
+
+#same as above 
+time_stranger2 <- social_time_Stage_3 %>% dplyr::select(Amendment, Sex, `Stranger 2`)
+time_stranger1 <- social_time_Stage_3 %>% dplyr::select(Amendment, Sex, `Stranger 1`)
+time_center <- social_time_Stage_3 %>% dplyr::select(Amendment, Sex, `Center`)
+
+soc_n2 <- ggplot(data= reshape2::melt(time_stranger2), aes(x= Amendment, y= value, group=Amendment)) + 
+  geom_boxplot(aes(fill= Amendment)) +  xlab("") + 
+  geom_jitter() +
+  ylab("Time (s)") + 
+ facet_wrap (~Sex) +
+stat_compare_means(comparisons = compare_tx, method= "t.test") + 
+  scale_fill_celatum(palette = "main") +  theme(legend.position="none") +
+  ggtitle("Social Novelty: Time with Stranger 2") +
+  theme(legend.position = "none") +
+  theme_bw()+
+     theme(text = element_text(size=14),
+        axis.text.x = element_text(angle=90, hjust=1)) 
+
+soc_n3 <- ggplot(data= reshape2::melt(time_stranger2), aes(x= Amendment, y= value, group=Amendment)) + 
+  geom_boxplot(aes(fill= Amendment)) +  xlab("") + 
+  geom_jitter() +
+  ylab("Time (s)") + 
+ #facet_wrap (~Sex) +
+stat_compare_means(comparisons = compare_tx, method= "t.test") + 
+  scale_fill_celatum(palette = "main") +  theme(legend.position="none") +
+  ggtitle("Social Novelty: Time with Stranger 2") +
+  theme(legend.position = "none") +
+  theme_bw()+
+     theme(text = element_text(size=14),
+        axis.text.x = element_text(angle=90, hjust=1)) 
+
+soc_n2
+#ggsave("sociability_s3_sex_new.tiff", dpi = 800, plot = soc_n2)
+```
+
+
+
+```{r}
+### Treatment Specific ANOVA Stage 2
+# ANOVA
+time_str1_nacl <- subset(time_stranger1, Amendment == "NaCl-AJ")
+#time_str1_nacl2 <- subset(time_stranger1, Amendment == "NaCl-Bact")
+
+#time_str1_nacl <- rbind(time_str1_nacl, time_str1_nacl2)
+
+time_str1_polyic <- subset(time_stranger1, Amendment == "PolyIC-AJ")
+time_str1_polyic2 <- subset(time_stranger1, Amendment == "PolyIC-Bact")
+
+time_str1_all <- rbind(time_str1_polyic, time_str1_polyic2,time_str1_nacl )
+
+#interaction <- aov(`Stranger 1` ~ Sex*Amendment, data = time_str1_nacl)
+#summary(interaction)
+
+#tukey.test <- TukeyHSD(interaction)
+#tukey.test
+
+interaction2 <- aov(`Stranger 1` ~ Sex*Amendment, data = time_str1_all)
+summary(interaction2)
+
+tukey.test2 <- TukeyHSD(interaction2)
+tukey.test2
+```
+
+```{r}
+time_str1_nacl <- subset(time_center1, Amendment == "NaCl-AJ")
+#time_str1_nacl2 <- subset(time_stranger1, Amendment == "NaCl-Bact")
+
+time_str1_nacl <- rbind(time_str1_nacl, time_str1_nacl2)
+
+time_str1_polyic <- subset(time_stranger1, Amendment == "PolyIC-AJ")
+time_str1_polyic2 <- subset(time_stranger1, Amendment == "PolyIC-Bact")
+
+time_str1_all <- rbind(time_str1_polyic, time_str1_polyic2,time_str1_nacl )
+
+#interaction <- aov(`Stranger 1` ~ Sex*Amendment, data = time_str1_nacl)
+#summary(interaction)
+
+#tukey.test <- TukeyHSD(interaction)
+#tukey.test
+
+interaction2 <- aov(`Stranger 1` ~ Sex*Amendment, data = time_str1_all)
+summary(interaction2)
+
+tukey.test2 <- TukeyHSD(interaction2)
+tukey.test2
+```
+
+
+# center time anova stage 2
+
+```{r}
+# ANOVA
+time_center_nacl <- subset(time_center, Amendment == "NaCl-AJ")
+#time_str1_nacl2 <- subset(time_stranger1, Amendment == "NaCl-Bact")
+
+
+time_center_polyic <- subset(time_center, Amendment == "PolyIC-AJ")
+time_center_polyic2 <- subset(time_center, Amendment == "PolyIC-Bact")
+
+time_center_all <- rbind(time_center_polyic, time_center_polyic2,time_center_nacl )
+
+#interaction <- aov(`Stranger 1` ~ Sex*Amendment, data = time_str1_nacl)
+#summary(interaction)
+
+#tukey.test <- TukeyHSD(interaction)
+#tukey.test
+
+interaction2 <- aov(`Center` ~ Sex*Amendment, data = time_center_all)
+summary(interaction2)
+
+tukey.test2 <- TukeyHSD(interaction2)
+tukey.test2
+```
+
+
+```{r warning=FALSE, message = FALSE, echo = FALSE}
+# ANOVA stage 3
+time_str2_nacl <- subset(time_stranger2, Amendment == "NaCl-AJ")
+#time_str2_nacl2 <- subset(time_stranger2, Amendment == "NaCl-Bact")
+
+#time_str2_nacl <- rbind(time_str2_nacl, time_str2_nacl2)
+
+time_str2_polyic <- subset(time_stranger2, Amendment == "PolyIC-AJ")
+time_str2_polyic2 <- subset(time_stranger2, Amendment == "PolyIC-Bact")
+
+time_str2_all <- rbind(time_str2_polyic, time_str2_polyic2,time_str2_nacl )
+
+interaction2 <- aov(`Stranger 2` ~ Sex*Amendment, data = time_str2_all)
+summary(interaction2)
+
+tukey.test2 <- TukeyHSD(interaction2)
+tukey.test2
+```
+
+## Elevated Plus Maze
+
+Load the data and process
+```{r}
+epm_n<-read.csv("EPM_Clean_no_naclbact.csv")
+
+# Get rid of groups we don't want
+epm_n <- subset(epm_n, Note.Problem == "Ok")
+epm_n <- subset(epm_n, !is.na(Dist))
+epm_n <- subset(epm_n, TREATMENT != "GF_NaCl-AJ")
+
+b <- table(epm_n$Sex, epm_n$TREATMENT)
+b
+
+# normalization (to level the difference in lengths of trials)
+# time 
+epm_n$CL_norm_time_Tot <- epm_n$CL_Total_Time / epm_n$Total_Time
+epm_n$OP_norm_time_Tot <- epm_n$OP_Total_Time / epm_n$Total_Time
+epm_n$CEN_norm_time_Tot <- epm_n$CEN_Total_Time / epm_n$Total_Time
+
+epm_n$CL_norm_time_OPandCL <- epm_n$CL_Total_Time / (epm_n$CL_Total_Time + epm_n$OP_Total_Time)
+epm_n$OP_norm_time_OPandCL <- epm_n$OP_Total_Time / (epm_n$CL_Total_Time + epm_n$OP_Total_Time)
+
+# entries
+epm_n$CL_norm_ent_OPandCL <- epm_n$CL_Ent / (epm_n$CL_Ent + epm_n$OP_Ent)
+epm_n$OP_norm_ent_OPandCL <- epm_n$OP_Ent / (epm_n$CL_Ent + epm_n$OP_Ent)
+epm_n$CEN_norm_ent_OPandCL <- epm_n$CEN_Ent / (epm_n$CL_Ent + epm_n$OP_Ent + epm_n$CEN_Ent)
+
+# average time per entry
+epm_n$CL_time_norm_by_entries <- epm_n$CL_Total_Time / epm_n$CL_Ent
+epm_n$OP_time_norm_by_entries <- epm_n$OP_Total_Time / epm_n$OP_Ent
+epm_n$CEN_time_norm_by_entries <- epm_n$CEN_Total_Time / epm_n$CEN_Ent
+
+# distance normalization
+epm_n$CL_norm_dist_Tot<-epm_n$CL_Dist / epm_n$Dist
+epm_n$OP_norm_dist_Tot<-epm_n$OP_Dist / epm_n$Dist
+epm_n$CEN_norm_dist_Tot<-epm_n$CEN_Dist / epm_n$Dist
+
+epm_n$CL_norm_dist_OPandCL<-epm_n$CL_Dist / (epm_n$CL_Dist + epm_n$OP_Dist)
+epm_n$OP_norm_dist_OPandCL<-epm_n$OP_Dist / (epm_n$CL_Dist + epm_n$OP_Dist)
+
+epm_n_comparisons= list(c("PolyIC-Bact", "PolyIC-AJ"),c("NaCl-AJ","PolyIC-AJ"))
+compare_sex= list(c("F", "M"))
+```
+
+Total active time
+
+```{r}
+interaction <- aov(Act_Time ~ TREATMENT, data = epm_n)
+summary(interaction)
+
+tukey.test <- TukeyHSD(interaction)
+tukey.test
+
+interaction <- aov(Act_Time ~ TREATMENT * Sex, data = epm_n)
+summary(interaction)
+
+tukey.test <- TukeyHSD(interaction)
+tukey.test
+
+bp2 <- ggplot(epm_n, aes(x= TREATMENT, y= CEN_Act_Time)) + 
+  geom_boxplot(aes(fill=TREATMENT))+
+  facet_grid(. ~ Sex)+
+  xlab("Treatment") + ylab("Total Active Time")+
+  geom_jitter()+
+stat_compare_means(comparisons = epm_n_comparisons,method= "wilcox.test")+
+   ggtitle("Total Active Time - center")+ 
+  theme(legend.position = "none")+
+  scale_fill_celatum() +
+    theme(legend.position = "none") +
+  theme_bw()+
+     theme(text = element_text(size=14),
+        axis.text.x = element_text(angle=90, hjust=1)) 
+bp2
+
+#ggsave("elevatedplus_new.tiff", dpi = 800, plot = bp2)
+
+```
+```{r warning=FALSE, message = FALSE, echo = FALSE}
+cor3 <- ggplot(epm_n, aes(x = Dist, y = OP_Ent, color = Sex)) +
+  facet_wrap(~TREATMENT)+
+  geom_point(size = 3)+
+  geom_smooth(se = FALSE, method = "lm") +
+  xlab("Distance (cm)") + ylab("Frequency of entries (open arm)") +
+   stat_cor(method = "spearman") +
+  scale_color_celatum(palette = "two") +
+  ggtitle("Distance traveled vs frequency of entries into open arm") +
+     theme(legend.position = "none") +
+  theme_classic()+
+     theme(text = element_text(size=14),
+        axis.text.x = element_text(angle=90, hjust=1))
+  
+cor3
+
+#ggsave("elevatedpluscorr.tiff", dpi = 800, plot = cor3)
+```
+
+
+## Figure 4: Marble Burying
+
+```{r}
+marble <- read.csv("Marble_Clean_nonaclbact.csv")
+
+b <- table(marble$Sex, marble$Treatment)
+b
+
+# ANOVA
+interaction <- aov(PercentBuried ~ Treatment, data = marble)
+summary(interaction)
+
+tukey.test <- TukeyHSD(interaction)
+tukey.test
+
+interaction <- aov(PercentBuried ~ Treatment*Sex, data = marble)
+summary(interaction)
+
+tukey.test <- TukeyHSD(interaction)
+tukey.test
+
+# Boxplot Buried Marbles VS Treatment
+comp_marble= list(c("PolyIC-Bact", "PolyIC-AJ"), c("NaCl-AJ", "PolyIC-AJ"))
+
+
+p0 <- ggplot(marble, aes(x=Treatment, y=PercentBuried)) + 
+   geom_boxplot(aes(fill=Treatment), 
+                width = 0.5)+
+  xlab("Treatment") + ylab("Percent Marbles Buried")+
+  facet_grid(. ~ Sex)+
+  geom_jitter()+
+  stat_compare_means(comparisons = comp_marble, method = "wilcox")+
+  ggtitle("Percent Buried Marbles VS Treatment")+
+  scale_fill_celatum(palette = "main") +
+  theme(legend.position = "none") +
+  theme_bw()+
+     theme(text = element_text(size=14),
+           axis.text.x = element_text(angle=90, hjust=1))
+p0
+
+p1 <- ggplot(marble, aes(x=Sex, y=PercentBuried)) + 
+   geom_boxplot(aes(fill=Sex), 
+                width = 0.5)+
+  xlab("Sex") + ylab("Percent Marbles Buried")+
+  #facet_grid(. ~ Treatment)+
+  geom_jitter()+
+  stat_compare_means(comparisons = compare_sex, method = "wilcox")+
+  scale_fill_celatum(palette = "two") +
+  theme(legend.position = "none") +
+  theme_bw()+
+     theme(text = element_text(size=14),
+           axis.text.x = element_text(angle=90, hjust=1))
+p1
+
+p1 <- ggplot(marble, aes(x=Sex, y=PercentBuried)) + 
+   geom_boxplot(aes(fill=Sex), 
+                width = 0.5)+
+  xlab("Sex") + ylab("Percent Marbles Buried")+
+  #facet_grid(. ~ Treatment)+
+  geom_jitter()+
+  stat_compare_means(comparisons = compare_sex, method = "wilcox")+
+  scale_fill_celatum(palette = "two") +
+  theme(legend.position = "none") +
+  theme_bw()+
+     theme(text = element_text(size=14),
+           axis.text.x = element_text(angle=90, hjust=1))
+p1
+
+#gsave("marble1.tiff", dpi = 800, plot = p0)
+#ggsave("marblesex.tiff", dpi = 800, plot = p1)
+```
+
+## Microbiome
+
+### 16S: Colon
+
+```{r}
+ps.colon <- readRDS("ps_filtdeseq_colon_final_4_20_21.rds")
+#subset the ps object to remove nacl bact
+ps.colon.nonaclbact <- subset_samples(ps.colon, Treatment != "NaCl_Bact")
+
+ord_colon.n<-ordinate(ps.colon.nonaclbact,method="PCoA", distance="bray")
+p1 = plot_ordination(ps.colon.nonaclbact, ord_colon.n, "species", color="Genus")
+p1
+colon.pcoa <- plot_ordination(ps.colon.nonaclbact, ord_colon.n, color = "Treatment", title = "Colon Only: Bray PCoA | Treatment") +
+  theme_set(theme_bw())+
+  geom_point(size = 3) +
+  scale_color_celatum() +
+  stat_ellipse(type = "t") +
+  theme_bw()+
+  theme(legend.position = "bottom") +
+  theme(text = element_text(size = 12))
+
+ggsave("colon_pcoa.tiff", dpi = 800, plot = colon.pcoa)
+
+plot_ordination(ps.colon.nonaclbact, ord_colon, color = "Sex", title = "Colon Only: Bray PCoA | Sex") +
+  theme_set(theme_bw())+
+  geom_point(size = 3) +
+  scale_color_celatum() +
+  stat_ellipse(type = "t") +
+  theme(legend.position = "bottom") +
+  theme(text = element_text(size = 12))
+
+```
+
+
+## Duodenum and colon richness
+
+```{r}
+ps.duo <- readRDS("ps_filtdeseq_duodenum_final_4_20_21.rds")
+ps.duo.nonaclbact <- subset_samples(ps.duo, Treatment != "NaCl_Bact")
+otu_table(ps.duo.nonaclbact) <- otu_table(round(as((otu_table(ps.duo.nonaclbact)), "matrix")), taxa_are_rows(ps.duo.nonaclbact)) #need to coerce the OTU counts into round numbers to get R to do the measurements properly, it doesn't like decimals
+df_alpha <- as.data.frame(ps.duo.nonaclbact@sam_data)
+df_alpha$Simpson <- estimate_richness(ps.duo.nonaclbact, split = TRUE, measures = "Simpson")$Simpson
+df_alpha$Shannon <- estimate_richness(ps.duo.nonaclbact, split = TRUE, measures = "Shannon")$Shannon
+
+df_alpha$Observed <- estimate_richness(ps.duo.nonaclbact, split = TRUE, measures = "Observed")$Observed
+duo_richness <- ggplot(data = df_alpha, aes(x = Treatment, y = Observed, fill =Treatment)) +
+   geom_boxplot() +
+  geom_jitter() + 
+  facet_wrap(~Sex) +
+  scale_color_celatum() +
+  scale_fill_celatum()+
+  theme_classic() +
+  stat_compare_means(comparisons = my_comparisons, method= "wilcox.test", hide.ns = TRUE) +
+  ggtitle("Observed Richness by sex (duodenum samples)") +
+  theme(legend.position = "none") +
+  theme_classic()+
+     theme(text = element_text(size=12),
+        axis.text.x = element_text(angle=90, hjust=1)) 
+#ggsave("duo_richness_new.tiff", dpi = 800, plot = duo_richness)
+
+l1 <- ggplot(data = df_alpha, aes(x = Treatment, y = Observed, fill =Treatment)) +
+  geom_jitter() + 
+  geom_boxplot() +
+  facet_wrap(~Sex) +
+  scale_fill_celatum() +
+  theme_bw() +
+  stat_compare_means(comparisons = my_comparisons) +
+  theme(text = element_text(size=12),
+        axis.text.x = element_text(angle=90, hjust=1)) +
+  ggtitle("Observed Richness by sex (duodenum samples)")
+
+
+l2 <- ggplot(data = df_alpha, aes(x = Treatment, y = Shannon, fill =Treatment)) +
+  geom_jitter() +   geom_boxplot() +
+  facet_wrap(~Sex) +
+  scale_fill_celatum() +
+  stat_compare_means(comparisons = my_comparisons) +
+  theme_bw()+
+     theme(text = element_text(size=12),
+        axis.text.x = element_text(angle=90, hjust=1)) +
+  ggtitle("Shannon Diversity Index by sex (duodenum samples)")
+
+l3 <- ggplot(data = df_alpha, aes(x = Treatment, y = Simpson, fill =Treatment)) +
+  geom_jitter() + 
+  geom_boxplot() +
+  facet_wrap(~Sex) +
+  theme_classic() +
+  scale_fill_celatum() +
+  stat_compare_means(comparisons = my_comparisons) +
+   theme_bw()+
+     theme(text = element_text(size=12),
+        axis.text.x = element_text(angle=90, hjust=1)) +
+  ggtitle("Simpson Diversity Index by sex (duodenum samples)")
+
+#ggsave("duo_observed_new.tiff", dpi = 800, plot = l1)
+#ggsave("duo_simpson_new.tiff", dpi = 800, plot = l3)
+#ggsave("duo_shannon.tiff", dpi = 800, plot = l2)
+
+```
+
+```{r}
+otu_table(ps.colon.nonaclbact) <- otu_table(round(as((otu_table(ps.colon.nonaclbact)), "matrix")), taxa_are_rows(ps.colon.nonaclbact)) #need to coerce the OTU counts into round numbers to get R to do the measurements properly, it doesn't like decimals
+df_alpha_colon <- as.data.frame(ps.colon.nonaclbact@sam_data)
+df_alpha_colon$Observed <- estimate_richness(ps.colon.nonaclbact, split = TRUE, measures = "Observed")$Observed
+df_alpha_colon$Simpson <- estimate_richness(ps.colon.nonaclbact, split = TRUE, measures = "Simpson")$Simpson
+df_alpha_colon$Shannon <- estimate_richness(ps.colon.nonaclbact, split = TRUE, measures = "Shannon")$Shannon
+
+my_comparisons <- list(c("PolyIC_Bact", "PolyIC_AJ"), c("NaCl_AJ", "PolyIC_AJ"), c("NaCl_AJ", "PolyIC_Bact"))
+my_comparisons2 <- list(c("M", "F"))
+p1 <-  ggplot(data = df_alpha_colon, aes(x = Treatment, y = Observed, fill =Treatment)) +
+   geom_boxplot() +
+  geom_jitter() +
+  facet_wrap(~Sex) +
+  scale_color_celatum() +
+  scale_fill_celatum() +
+  stat_compare_means(comparisons = my_comparisons, method= "wilcox.test", hide.ns = TRUE) +
+  ggtitle("Observed Richness by sex (colon samples)") +
+    theme(legend.position = "none") +
+  theme_bw()+
+     theme(text = element_text(size=12),
+        axis.text.x = element_text(angle=90, hjust=1)) 
+rich_colon
+
+rich_sex <- ggplot(data = df_alpha_colon, aes(x = Sex, y = Observed, fill = Sex)) +
+  geom_jitter() + 
+  geom_boxplot() +
+  facet_wrap(~Treatment) +
+  theme_classic() +
+  scale_fill_celatum() +
+  stat_compare_means(comparisons = my_comparisons2, method= "wilcox.test", hide.ns = TRUE) +
+   theme(legend.position = "none") +
+  theme_classic()+
+     theme(text = element_text(size=12),
+        axis.text.x = element_text(angle=90, hjust=1)) +
+  ggtitle("Observed Richness by treatment (colon samples)")
+rich_sex 
+
+p2 <- ggplot(data = df_alpha_colon, aes(x = Treatment, y = Shannon, fill =Treatment)) +
+  geom_jitter() +   geom_boxplot() +
+  facet_wrap(~Sex) +
+  scale_fill_celatum() +
+  stat_compare_means(comparisons = my_comparisons) +
+  theme_bw()+
+     theme(text = element_text(size=12),
+        axis.text.x = element_text(angle=90, hjust=1)) +
+  ggtitle("Shannon Diversity Index by sex (colon samples)")
+
+p3 <- ggplot(data = df_alpha_colon, aes(x = Treatment, y = Simpson, fill =Treatment)) +
+  geom_jitter() + 
+  geom_boxplot() +
+  facet_wrap(~Sex) +
+  theme_classic() +
+  scale_fill_celatum() +
+  stat_compare_means(comparisons = my_comparisons) +
+   theme_bw()+
+     theme(text = element_text(size=12),
+        axis.text.x = element_text(angle=90, hjust=1)) +
+  ggtitle("Simpson Diversity Index by sex (colon samples)")
+
+ggsave("colon_observed_new.tiff", dpi = 800, plot = p1)
+ggsave("colon_simpson_new.tiff", dpi = 800, plot = p3)
+ggsave("colon_shannon.tiff", dpi = 800, plot = p2)
+
+```
+
+
+## Beta diversity
+```{r}
+ord_colon<-ordinate(ps.colon.nonaclbact,method="PCoA", distance="bray")
+
+colon_bray <- plot_ordination(ps.colon.nonaclbact, ord_colon, color = "Treatment", title = "Colon Only: Bray PCoA | Treatment") +
+  #theme_set(theme_bw())+
+  geom_point(size = 3) +
+  scale_color_celatum() +
+  stat_ellipse(type = "t") +
+  theme(legend.position = "bottom") +
+  theme(text = element_text(size = 18))
+
+plot_ordination(ps.colon.nonaclbact, ord_colon, color = "Sex", title = "Colon Only: Bray PCoA | Sex") +
+  #theme_classic()+
+  geom_point(size = 3) +
+  scale_color_celatum() +
+   stat_ellipse(type = "t") +
+  theme(legend.position = "bottom") +
+   theme(text = element_text(size = 18))
+
+#bray_tx
+ggsave("colon_bray_new.tiff", plot = colon_bray, dpi = 800)
+
+braydist.1 <- phyloseq::distance(ps.duo.nonaclbact, "bray")
+ord<-ordinate(ps.duo.nonaclbact,method="PCoA", distance="bray")
+
+
+duo_bray <- plot_ordination(ps.duo.nonaclbact, ord, color = "Treatment", title = "Duodenum Only: Bray PCoA | Treatment") +
+  theme_set(theme_bw())+
+  geom_point(size = 3) +
+  scale_color_celatum() +
+  stat_ellipse(type = "t") +
+  theme(legend.position = "bottom") +
+  theme(text = element_text(size = 18))
+ggsave("duo_bray_new.tiff", plot = duo_bray, dpi = 800)
+
+plot_ordination(ps.duo.nonaclbact, ord, color = "Sex", title = "Duodenum Only: Bray PCoA | Sex") +
+  theme_set(theme_bw())+
+  geom_point(size = 3) +
+  scale_color_celatum() +
+  stat_ellipse(type = "t") +
+  theme(legend.position = "bottom") +
+  theme(text = element_text(size = 18))
+
+```
+# Splitting up the PCOA by sex: colon
+
+```{r}
+colon.ps.male <- subset_samples(ps.colon.nonaclbact, Sex=="M")
+colon.ps.female <- subset_samples(ps.colon.nonaclbact, Sex=="F")
+
+# MALES:
+braydist.1.m <- phyloseq::distance(colon.ps.male, "bray")
+ord.m <-ordinate(colon.ps.male,method="PCoA", distance="bray")
+
+col.pcoa.m <- plot_ordination(colon.ps.male, ord.m, color = "Treatment", title = "Males, Colon: Bray PCoA | Treatment") +
+  theme_set(theme_bw())+
+  geom_point(size = 3) +
+  scale_color_celatum() +
+  stat_ellipse(type = "t") +
+  theme(legend.position = "bottom") +
+  theme(text = element_text(size = 18))
+
+
+
+# FEMALES:
+braydist.1.f <- phyloseq::distance(colon.ps.female, "bray")
+ord.f <-ordinate(colon.ps.female,method="PCoA", distance="bray")
+
+col.pcoa.f <- plot_ordination(colon.ps.female, ord.f, color = "Treatment", title = "Females, Colon: Bray PCoA | Treatment") +
+  theme_set(theme_bw())+
+  geom_point(size = 3) +
+  scale_color_celatum() +
+  stat_ellipse(type = "t") +
+  theme(legend.position = "bottom") +
+  theme(text = element_text(size = 18))
+col.pcoa.m
+col.pcoa.f
+
+ggsave("colon_female_bray_new.tiff", plot = col.pcoa.f, dpi = 800)
+ggsave("colon_male_new.tiff", plot = col.pcoa.m, dpi = 800)
+
+```
+# Splitting up the PCOA by sex: duodenum
+
+```{r}
+duo.ps.male <- subset_samples(ps.duo.nonaclbact, Sex=="M")
+duo.ps.female <- subset_samples(ps.duo.nonaclbact, Sex=="F")
+
+# MALES:
+braydist.1.m <- phyloseq::distance(duo.ps.male, "bray")
+ord.m <-ordinate(duo.ps.male,method="PCoA", distance="bray")
+
+duo.pcoa.m <- plot_ordination(duo.ps.male, ord.m, color = "Treatment", title = "Males, Duodenum: Bray PCoA | Treatment") +
+  theme_set(theme_bw())+
+  geom_point(size = 3) +
+  scale_color_celatum() +
+  stat_ellipse(type = "t") +
+  theme(legend.position = "bottom") +
+  theme(text = element_text(size = 18))
+
+
+
+# FEMALES:
+braydist.1.f <- phyloseq::distance(duo.ps.female, "bray")
+ord.f <-ordinate(duo.ps.female,method="PCoA", distance="bray")
+
+duo.pcoa.f <- plot_ordination(duo.ps.female, ord.f, color = "Treatment", title = "Females, Duodenum: Bray PCoA | Treatment") +
+  theme_set(theme_bw())+
+  geom_point(size = 3) +
+  scale_color_celatum() +
+  stat_ellipse(type = "t") +
+  theme(legend.position = "bottom") +
+  theme(text = element_text(size = 18))
+duo.pcoa.m
+duo.pcoa.f
+
+ggsave("duo_female_bray_new.tiff", plot = duo.pcoa.f, dpi = 800)
+ggsave("duo_male_new.tiff", plot = duo.pcoa.m, dpi = 800)
+
+```
+
+PERMANOVA: Colon 
+```{r}
+factors_to_test <- c("Treatment", "Sex")
+
+#1: extract the distance
+braydist.1 <- phyloseq::distance(ps.colon.nonaclbact, "bray")
+
+#2: make the data frame
+sampledf.1 <- data.frame(sample_data(ps.colon.nonaclbact))
+
+#3: adonis - uses the extracted distance along with the dataframe that you made to accompany the phyloseq object.
+adonis(braydist.1 ~ Treatment, data = sampledf.1) 
+adonis(braydist.1 ~ Sex, data = sampledf.1)
+adonis(braydist.1 ~ Sex * Treatment, data = sampledf.1)
+
+beta <- betadisper(braydist.1, sampledf.1$Sex)
+permutest(beta)
+beta <- betadisper(braydist.1, sampledf.1$Treatment)
+permutest(beta)
+
+
+#Just females
+
+factors_to_test <- c("Treatment", "Sex")
+
+#1: extract the distance
+braydist.1 <- phyloseq::distance(colon.ps.female, "bray")
+
+#2: make the data frame
+sampledf.1 <- data.frame(sample_data(colon.ps.female))
+
+#3: adonis - uses the extracted distance along with the dataframe that you made to accompany the phyloseq object.
+adonis(braydist.1 ~ Treatment, data = sampledf.1) 
+#adonis(braydist.1 ~ Sex, data = sampledf.1)
+#adonis(braydist.1 ~ Sex * Treatment, data = sampledf.1)
+beta <- betadisper(braydist.1, sampledf.1$Treatment)
+permutest(beta)
+
+#Just males
+
+factors_to_test <- c("Treatment", "Sex")
+
+#1: extract the distance
+braydist.1 <- phyloseq::distance(colon.ps.male, "bray")
+
+#2: make the data frame
+sampledf.1 <- data.frame(sample_data(colon.ps.male))
+
+#3: adonis - uses the extracted distance along with the dataframe that you made to accompany the phyloseq object.
+adonis(braydist.1 ~ Treatment, data = sampledf.1) 
+#adonis(braydist.1 ~ Sex, data = sampledf.1)
+#adonis(braydist.1 ~ Sex * Treatment, data = sampledf.1)
+beta <- betadisper(braydist.1, sampledf.1$Treatment)
+permutest(beta)
+
+```
+
+
+PERMANOVA: Duodenum
+```{r}
+factors_to_test <- c("Treatment", "Sex")
+
+#1: extract the distance
+braydist.1 <- phyloseq::distance(ps.duo.nonaclbact, "bray")
+
+#2: make the data frame
+sampledf.1 <- data.frame(sample_data(ps.duo.nonaclbact))
+
+#3: adonis - uses the extracted distance along with the dataframe that you made to accompany the phyloseq object.
+adonis(braydist.1 ~ Treatment, data = sampledf.1) 
+adonis(braydist.1 ~ Sex, data = sampledf.1)
+adonis(braydist.1 ~ Sex * Treatment, data = sampledf.1)
+
+beta <- betadisper(braydist.1, sampledf.1$Sex)
+permutest(beta)
+beta <- betadisper(braydist.1, sampledf.1$Treatment)
+permutest(beta)
+
+#Just females
+
+factors_to_test <- c("Treatment", "Sex")
+
+#1: extract the distance
+braydist.1 <- phyloseq::distance(duo.ps.female, "bray")
+
+#2: make the data frame
+sampledf.1 <- data.frame(sample_data(duo.ps.female))
+
+#3: adonis - uses the extracted distance along with the dataframe that you made to accompany the phyloseq object.
+adonis(braydist.1 ~ Treatment, data = sampledf.1) 
+#adonis(braydist.1 ~ Sex, data = sampledf.1)
+#adonis(braydist.1 ~ Sex * Treatment, data = sampledf.1)
+beta <- betadisper(braydist.1, sampledf.1$Treatment)
+permutest(beta)
+
+#Just males
+
+factors_to_test <- c("Treatment", "Sex")
+
+#1: extract the distance
+braydist.1 <- phyloseq::distance(duo.ps.male, "bray")
+
+#2: make the data frame
+sampledf.1 <- data.frame(sample_data(duo.ps.male))
+
+#3: adonis - uses the extracted distance along with the dataframe that you made to accompany the phyloseq object.
+adonis(braydist.1 ~ Treatment, data = sampledf.1) 
+#adonis(braydist.1 ~ Sex, data = sampledf.1)
+#adonis(braydist.1 ~ Sex * Treatment, data = sampledf.1)
+beta <- betadisper(braydist.1, sampledf.1$Treatment)
+permutest(beta)
+```
+
+
+
