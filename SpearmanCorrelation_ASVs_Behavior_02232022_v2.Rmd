@@ -1,0 +1,412 @@
+---
+title: "SpearmanCorrelation_Behavior_and_16S_ChristineEdit"
+author: "Grace Deitzler & Christine Tataru & Maude David"
+date: "2/23/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+# load libraries
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library("phyloseq")
+library("ggplot2")
+library("ggpubr")
+library("stats")
+library("dplyr")
+library("tidyr")
+library("scales")
+library("ggpmisc")
+library("limma")
+library("compare")
+```
+
+# load in the behavior
+
+```{r}
+behavior <- read.csv("behavior_corr_20230118.csv")
+
+dim(behavior)
+#b <- table(behavior$Sex, behavior$TREATMENT)
+#b
+#remove the NaCl_Bact group
+behavior <- subset(behavior, TREATMENT != "NaCl-Bact")
+```
+
+## Load phyloseq object and trim
+
+```{r}
+ps.colon <- readRDS("ps_filtdeseq_colon_final_4_20_21.rds")
+ps.colon.nonaclbact <- subset_samples(ps.colon, Treatment != "NaCl_Bact")
+OTU1 = as(otu_table(ps.colon.nonaclbact),"matrix" )
+if(taxa_are_rows(ps.colon.nonaclbact)){OTU1 <- t(OTU1)}
+OTUdf = as.data.frame(OTU1)
+rownames(OTUdf) <- ps.colon.nonaclbact@sam_data$Sample.ID.unique
+OTUdf$Sample.ID.unique <- rownames(OTUdf)
+
+#issue with data entry, manual edit: "36.1Col11PolyIC-Bact4" and "36.2Col11PolyIC-Bact4" are the same sample 
+OTUdf$Sample.ID.unique [OTUdf$Sample.ID.unique == "36.2Col11PolyIC-Bact4"]<-"36.1Col11PolyIC-Bact4"
+dim(OTUdf)
+
+# combine the two datasets and match them "joining"
+corr <- merge(x = OTUdf, y = behavior, by = "Sample.ID.unique", all.x = TRUE)
+```
+
+
+## Function to correlate with the behavior measures
+
+```{r echo=T, results='hide'}
+
+#removes the columns that we don't want 
+corr_filt <- corr %>% dplyr::select(-c("Sample.ID.unique", "Mouse", "Cohort", "Day", "TREATMENT", "Treatment", "Type", "Sex", "Difference1", "Time_With_Stranger", "Social_Novelty", "Total_Active_Time", "Number_Marbles_Buried"))
+
+#function:
+pearson_cor <- function (arg1){
+  col1<-which(colnames(corr )== arg1)
+  result <- apply(corr_filt, 2, function(x){
+ test <- cor.test(as.numeric(x), as.numeric(corr[[col1]]), method = "spearman", exact=FALSE)
+ return(test)
+})
+
+#make a list of the pvals
+pvals <- lapply(result, function(x){
+return(x$p.value)
+})
+#turn into a vector
+pvals <- unlist(pvals)
+#Check there are no NAs, but also remove them just in case sum(is.na(pvals))
+pvals <- na.omit(pvals)
+#multiple testing correction
+p_adj = p.adjust(pvals, method = "fdr")
+
+#pull the significant ones
+sig.pval = p_adj[p_adj < 0.05]
+length(sig.pval)
+
+###check against tax table
+taxa = data.frame(ps.colon@tax_table)[names(sig.pval), ]
+
+#now try with rho
+rho <- lapply(result, function(x){
+return(unname(x$estimate))})
+rho = unlist(rho)
+rho_names<-rho[names(rho)%in% rownames(taxa)]
+
+#putting them together
+Soc<-cbind(taxa,as.data.frame(sig.pval),as.data.frame(rho_names) )
+return(Soc)
+}
+
+###ok now let's add the other variable hat are not the data against themselves
+
+Time_stranger_corr<-pearson_cor("Time_With_Stranger") #25 sign
+Social_Novelty_corr<-pearson_cor("Social_Novelty") #0
+Total_Active_Time_corr<-pearson_cor("Total_Active_Time") #32
+Number_Marbles_Buried_corr<-pearson_cor("Number_Marbles_Buried") #0
+
+saveRDS(Time_stranger_corr,"Time_stranger_corr_colon.RDS")
+saveRDS(Total_Active_Time_corr, "Total_active_time_corr_colon.RDS")
+```
+##Now we correlate the taxa with themselves
+
+```{r echo=T, results='hide'}
+
+dim(OTUdf)
+#need to remove the column ID since already as the rowname
+OTUdf<-OTUdf[,colnames(OTUdf) != c("Sample.ID.unique")]
+dim(OTUdf) # should eb the same 
+class(OTUdf)
+#Prepare the dataframe for the results
+cor_ASVs_rho<- data.frame(matrix(ncol = ncol(OTUdf), nrow =ncol(OTUdf) ))
+colnames(cor_ASVs_rho) = colnames(OTUdf)
+rownames(cor_ASVs_rho) = colnames(OTUdf)
+
+for (i in 1:dim(OTUdf)[2]){
+   cat (i," ")
+      tmp_estimate<-apply(OTUdf, 2, function(x){
+      test_tmp_estimate <- cor.test(as.numeric(x), as.numeric(OTUdf[,i]), method = "spearman", exact=FALSE)$estimate
+      return(test_tmp_estimate)
+      })
+      cor_ASVs_rho[,i]<-tmp_estimate
+      }
+
+#now thw p-value: using a list because I need ot correct them before putting them i a df 
+cor_ASVs_pval=list()
+for (i in 1:dim(OTUdf)[2]){
+   cat (i," ")
+      tmp_pval<-apply(OTUdf, 2, function(x){
+      test_tmp_pval <- cor.test(as.numeric(x), as.numeric(OTUdf[,i]), method = "spearman", exact=FALSE)$p.val
+      return(test_tmp_pval)
+      })
+      cor_ASVs_pval[[i]]<-tmp_pval
+      }
+
+#Ok need to correct the pval
+cor_ASVs_pval_tmp<-unlist(cor_ASVs_pval)
+cor_ASVs_pval_corrected= p.adjust(cor_ASVs_pval_tmp, method = "fdr")
+
+#check if we have any significant ones. 
+cor_ASVs_pval_corrected.sig = cor_ASVs_pval_corrected[cor_ASVs_pval_corrected < 0.05] #yes over 15,000 good. 
+
+#ok do NOT filter yet, put it back into a df to keep track of the correlation
+#so we need to put it back to the table. 
+# we use column of 350 so I should grab 350 every 350 to put it back into the matrix 
+#it's very dirty. I don;t any other way .. 
+cor_ASVs_pval_df<- data.frame(matrix(ncol = ncol(OTUdf), nrow =ncol(OTUdf) ))
+
+for (i in 1:dim(cor_ASVs_pval_df)[2]){
+  a<-i*350-349
+  b<-i*350
+  cor_ASVs_pval_df[,i]<-cor_ASVs_pval_corrected[a:b]
+  }
+
+colnames(cor_ASVs_pval_df) = names(cor_ASVs_pval_corrected)[1:350]
+rownames(cor_ASVs_pval_df) = colnames(OTUdf)
+
+#and now we can filter 
+cor_ASVs_rho[cor_ASVs_pval_df<0.05]<-0
+
+#quick that numbers make sense, and it does
+#tmp<-unlist(cor_ASVs_rho)
+# length(tmp[tmp==0])
+#tmp<-unlist(cor_ASVs_pval_corrected)
+#length(tmp[tmp<0.05])
+
+
+write.csv(cor_ASVs_rho, file = "01_19_2023_ColonTaxacorr_rho_colon.csv")
+write.csv(cor_ASVs_pval_df, file = "01_19_2023_ColonTaxacorr_pval_colon.csv")
+
+#saveRDS(cor_ASVs_rho, "cor_ASVs_rho_colon.RDS")
+#saveRDS(cor_ASVs_pval_df, "cor_ASVs_pval_df_colon.RDS")
+
+```
+
+## Now we need to combine all the measures in one table to send to Gephi
+
+```{r echo=T, results='hide'}
+
+#first do a giant df with everything 
+#I need to add the columns with the two measures for the behavior
+
+cor_ASVs_rho<-readRDS("cor_ASVs_rho_colon.RDS")
+
+#cor_ASVs_rho$Time_with_stranger<-rep(NA, dim(cor_ASVs_rho)[1])
+#cor_ASVs_rho$Total_Active_Time<-rep(NA, dim(cor_ASVs_rho)[1])
+
+#cor_ASVs_rho[dim(cor_ASVs_rho)[1]+1,]<-rep(NA, dim(cor_ASVs_rho)[2])
+#cor_ASVs_rho[dim(cor_ASVs_rho)[1]+1,]<-rep(NA, dim(cor_ASVs_rho)[2])
+
+#rownames(cor_ASVs_rho)[351]<-"Time_with_stranger"
+#rownames(cor_ASVs_rho)[352]<-"Total_Active_Time"
+
+#ok now add the behavior values
+#start with Time_stranger_corr
+sub_Time_stranger_corr<-Time_stranger_corr[, c("rho_names", "sig.pval")]
+cor_ASVs_beh_rho<-merge(x=cor_ASVs_rho,y= sub_Time_stranger_corr, by= 0, all = TRUE)
+rownames(cor_ASVs_beh_rho)<-cor_ASVs_beh_rho$Row.names
+cor_ASVs_beh_rho<-cor_ASVs_beh_rho[,-which(colnames(cor_ASVs_beh_rho) == "Row.names")]
+cor_ASVs_beh_rho<-cor_ASVs_beh_rho[,-which(colnames(cor_ASVs_beh_rho) == "sig.pval")]
+colnames(cor_ASVs_beh_rho)[colnames(cor_ASVs_beh_rho)=="rho_names"]<-"Time_stranger"
+
+# now Total_Active_Time_corr
+sub_Total_Active_Time_corr<-Total_Active_Time_corr[, c("rho_names", "sig.pval")]
+cor_ASVs_beh_rho<-merge(x=cor_ASVs_beh_rho,y= sub_Total_Active_Time_corr, by= 0, all = TRUE)
+rownames(cor_ASVs_beh_rho)<-cor_ASVs_beh_rho$Row.names
+cor_ASVs_beh_rho<-cor_ASVs_beh_rho[,-which(colnames(cor_ASVs_beh_rho) == "Row.names")]
+cor_ASVs_beh_rho<-cor_ASVs_beh_rho[,-which(colnames(cor_ASVs_beh_rho) == "sig.pval")]
+colnames(cor_ASVs_beh_rho)[colnames(cor_ASVs_beh_rho)=="rho_names"]<-"Total_Active_Time"
+
+#and now create the last two rows: 
+cor_ASVs_for_row<-cor_ASVs_beh_rho[,c("Total_Active_Time","Time_stranger" )]
+t_cor_ASVs_for_row<-t(cor_ASVs_for_row)
+t_cor_ASVs_for_row<-as.data.frame(t_cor_ASVs_for_row)
+
+tmp<-cor.test( cor_ASVs_for_row[,"Total_Active_Time"], cor_ASVs_for_row[,"Time_stranger"] , method="spearman", exact=FALSE) #not significant so just zeros
+t_cor_ASVs_for_row$Total_Active_Time<- c(0,0)
+t_cor_ASVs_for_row$Time_stranger<- c(0,0)
+
+#and now rbind
+cor_ASVs_beh_rho<-rbind(cor_ASVs_beh_rho,t_cor_ASVs_for_row)
+
+#and now data wrangling for Gephi 
+#Gephi does not want NA, we will add 0 because we're using Rho so small number = no correlation 
+cor_ASVs_beh_rho[is.na(cor_ASVs_beh_rho)] <- 0
+
+#and finally remove the lines with zeros only
+tmp<-apply(cor_ASVs_beh_rho, 2, function(x){
+      tmp<-sum(abs(x)) 
+      return(tmp)
+      })
+      
+dim(cor_ASVs_beh_rho)
+
+cor_ASVs_beh_rho<-cor_ASVs_beh_rho[tmp>0,tmp>0]
+
+write.csv(cor_ASVs_beh_rho, file="cor_ASVs_beh_rho_colon_20230120.csv")
+#saveRDS(cor_ASVs_beh_rho, "cor_ASVs_beh_rho_colon.RDS")
+```
+
+
+
+## graph help
+```{r echo=T, results='hide'}
+#Sending taxa file to help with the graph
+taxa_to_work_with<-tax_table(ps.colon.nonaclbact)
+taxa_to_work_with<-taxa_to_work_with[rownames(taxa_to_work_with) %in% colnames(cor_ASVs_beh_rho),]
+taxa_to_work_with<-as.data.frame(taxa_to_work_with)
+#combine for graph
+taxa_to_work_with$Label<-paste(taxa_to_work_with$Order, taxa_to_work_with$Family, taxa_to_work_with$Genus, sep="_")
+taxa_to_work_with$Id<- rownames(taxa_to_work_with)
+
+  
+#And also: now it would be great to add the average of the normalized count for the size of the node 
+taxa_mean<-colMeans(OTU1)
+taxa_mean<-taxa_mean[names(taxa_mean) %in% rownames(taxa_to_work_with)]
+taxa_to_work_with <- merge(x = taxa_to_work_with, y = taxa_mean, by = 0)
+rownames(taxa_to_work_with)<-taxa_to_work_with$Row.names
+colnames(taxa_to_work_with)[colnames(taxa_to_work_with) == "y"]<-"taxa_mean"
+taxa_to_work_with<-taxa_to_work_with[,-which(colnames(taxa_to_work_with) == "Row.names")]
+
+#and add the behavior labels
+taxa_to_work_with[dim(taxa_to_work_with)[1]+1,]<-rep("Time_stranger", length(taxa_to_work_with))
+rownames(taxa_to_work_with)[344]<-"Time_stranger"
+taxa_to_work_with[dim(taxa_to_work_with)[1]+1,]<-rep("Total_Active_Time", length(taxa_to_work_with))
+rownames(taxa_to_work_with)[345]<-"Total_Active_Time"
+
+taxa_to_work_with$taxa_mean[344]<-max(as.numeric(taxa_to_work_with$taxa_mean)[1:343])
+taxa_to_work_with$taxa_mean[345]<-max(as.numeric(taxa_to_work_with$taxa_mean)[1:343])
+
+write.csv(taxa_to_work_with, file="nodes_names_2023_01_23.csv")
+#saveRDS(taxa_to_work_with, file="nodes_names_2023_01_23.RDS")
+
+```
+
+##working on sex differences 
+```{r echo=T, results='hide'}
+
+#ok and finally, the sex differences 
+sex<-read.csv("final_master_ancombc_results_2022 (1).csv")
+rownames(sex)<-sex$ASV
+sex_colon<-sex[,grep("colon", colnames(sex))]
+
+sex_colon_males<-sex_colon[,grep("Males", colnames(sex_colon))]
+
+sex_colon_males$males<-rep("NA",dim(sex_colon_males)[1] )
+for (i in 1:dim(sex_colon_males)[1]){
+  if (is.na(sex_colon_males[i,1]) & is.na(sex_colon_males[i,2])) {
+    sex_colon_males$males[i] <- "NA"
+  }
+  else if ( is.na(sex_colon_males[i,1]) & sex_colon_males[i,2] > 0)  {
+      sex_colon_males$males[i] <- sex_colon_males[i,2]
+    }
+   else if ( is.na(sex_colon_males[i,2]) & sex_colon_males[i,1] > 0 )  {
+      sex_colon_males$males[i] <- sex_colon_males[i,1]
+   }
+   else if (sex_colon_males[i,1] > 0 & sex_colon_males[i,2] > 0) { 
+   sex_colon_males$males[i] <- rowMeans(sex_colon_males[i,1:2])
+   }
+    else {sex_colon_males$males[i] <- "NA"}
+    } 
+  
+sex_colon_Females<-sex_colon[,grep("Females", colnames(sex_colon))]
+
+sex_colon_Females$Females<-rep("NA",dim(sex_colon_Females)[1] )
+for (i in 1:dim(sex_colon_Females)[1]){
+  if (is.na(sex_colon_Females[i,1]) & is.na(sex_colon_Females[i,2])) {
+    sex_colon_Females$Females[i] <- "NA"
+  }
+  else if ( is.na(sex_colon_Females[i,1]) & sex_colon_Females[i,2] > 0)  {
+      sex_colon_Females$Females[i] <- sex_colon_Females[i,2]
+    }
+   else if ( is.na(sex_colon_Females[i,2]) & sex_colon_Females[i,1] > 0 )  {
+      sex_colon_Females$Females[i] <- sex_colon_Females[i,1]
+   }
+   else if (sex_colon_Females[i,1] > 0 & sex_colon_Females[i,2] > 0) { 
+   sex_colon_Females$Females[i] <- rowMeans(sex_colon_Females[i,1:2])
+   }
+    else {sex_colon_Females$Females[i] <- "NA"}
+    } 
+  
+sex_final<-merge(sex_colon_Females, sex_colon_males, by = 0)
+
+
+#ok now add Females and males into the rest of the nodes etc.. 
+#make sure I fildter the one that are bnot int eh matrix AND I add the ones not in ancom as zeros 
+
+
+sex_final<-sex_final[, c("males","Females")]
+
+#ok we need ot scale to make sure we can compare with the other data
+#I am scaling the sex ones
+#first replace all NA by zero
+sex_final[sex_final == "NA"]<-0
+sex_final$males<-as.numeric(sex_final$males)
+sex_final$Females<-as.numeric(sex_final$Females)
+
+#thevalue of the Ancom stats is not crazy : I am going to rescale them to match the scale of rho 
+# same add the two rown in the coland the row AND edit the nodes 
+max2<-max(sex_final)
+
+
+#and how about the other df
+max1<-max(abs(cor_ASVs_beh_rho)) #
+
+#now transform the data: 
+sex_final_tr<-sex_final*max1/max2
+#now remove the taxa that were in sex_final_tr but not in the behavior part
+tmp<-sex_final_tr[rownames(sex_final_tr) %in% rownames(cor_ASVs_beh_rho),]
+
+tmp<-merge(cor_ASVs_beh_rho, tmp, by=0, all=T)
+rownames(tmp) <-tmp$Row.names
+tmp<-tmp[,-which(colnames(tmp) == "Row.names")] #removing that useless column
+dim(tmp)
+
+#ok and finally finally: we need to add the column to be square on the bottom 
+tmp[346,]<-c(tmp[,346],0,0)
+tmp[347,]<-c(tmp[,347],0)
+
+#and finally replace the NA by zero
+tmp$Females[is.na(tmp$Females)]<-0
+tmp$males[is.na(tmp$males)]<-0
+
+altogetehr_sex<-tmp
+
+write.csv(altogetehr_sex, file="altogether_sex_20230208_v2.csv")
+
+#and edit the big files with all nodes:
+taxa_to_work_with[346,]<-rep(NA, length(taxa_to_work_with))
+taxa_to_work_with[347,]<-rep(NA, length(taxa_to_work_with))
+rownames(taxa_to_work_with)[346]<-"Males"
+rownames(taxa_to_work_with)[347]<-"Females"
+
+taxa_to_work_with[346,]<-rep("Males", length(taxa_to_work_with))
+taxa_to_work_with[347,]<-rep("Females", length(taxa_to_work_with))
+
+taxa_to_work_with$taxa_mean[346]<-max(as.numeric(taxa_to_work_with$taxa_mean)[1:343])
+taxa_to_work_with$taxa_mean[347]<-max(as.numeric(taxa_to_work_with$taxa_mean)[1:343])
+
+
+
+
+write.csv(taxa_to_work_with, file="with_sex_taxa_nodes_details_2023_03_16_v3.csv", row.names = FALSE) #note: I had to read under the node sequences (ID) the Time_stranger and Total_Active_Time in excel manually. 
+
+```
+##At this point import to Gephi and re-export the edge table 
+```{r echo=T, results='hide'}
+edges<-read.csv("gephi_table_nodes_edges_20230316.csv")
+dim(edges)
+#add a label for the color of the edge 
+edges$Label[edges$Weight>0]<- "positive"
+edges$Label[edges$Weight<0]<- "negative"
+
+#filtered version of edges 
+edges_filt<-edges[abs(edges$Weight) > 0.3,]
+
+dim(edges_filt)
+dim(edges)
+
+write.csv(edges, file="edges_edits_2023_03_16_v1.csv", row.names = FALSE)
+write.csv(edges_filt, file="edges_filts_edits_2023_03_16_v1.csv", row.names = FALSE)
+
+```
