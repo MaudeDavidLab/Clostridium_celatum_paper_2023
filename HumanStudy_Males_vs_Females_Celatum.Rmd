@@ -1,0 +1,186 @@
+---
+title: "Longitudinal_ASD"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(phyloseq)  
+library(ape)
+library(dplyr)
+#library(structSSI)
+library(reshape2)
+library(ggplot2)
+library(igraph)
+library(readr)
+#library(gage)
+```
+
+Data pulled from the Microbiome 16S Mbio repository: https://github.com/walllab/Microbiome_16S_mbio
+
+## checking the ps object
+
+```{r}
+
+ps_filt <- readRDS("ps_filt_norm_117_BS100 (1).RDS") #non normalized and non filtered
+
+View(ps_filt)
+```
+
+We want to look at:
+- the ASV that contains celatum
+- that ASV in boys with autism
+- that ASV in girls with autism
+
+do we see it in boys more than girls?
+
+## Autism only
+
+```{r}
+ps.aut <- subset_samples(ps_filt, Treatment == "Aut")
+ps.con <- subset_samples(ps_filt, Treatment == "Control")
+
+#View(ps.con) #60 samples total
+```
+
+### girls, boys with autism only
+
+```{r}
+ps.aut.f <- subset_samples(ps.aut, Gender == "f")
+ps.con.m <- subset_samples(ps.con, Gender == "m")
+ps.con.f <- subset_samples(ps.con, Gender == "f")
+ps.aut.m <- subset_samples(ps.aut, Gender == "m")
+
+#View(ps.aut.f) # only 17 asd samples are female, might not have enough power
+
+```
+
+Where is the C. celatum? Is it here? Let's look at the ASVs
+
+```{r}
+tax <- as.data.frame(ps.aut.f@tax_table)
+
+View(tax) #ok it's in there!
+```
+
+celatum otu: GCGAGCGTTGTCCGGATTTACTGGGCGTAAAGGGAGCGTAGGCGGACTTTTAAGTGAGATGTGAAATACCCGGGCTCAACTTGGGTGCTGCATTTCAAACTGGAAGTCTAGAGTGCAGGAGAGGAGAATGGAATTCCTAGTGTAGCGGTGAAATGCGTAGAGATTAGGAAGAACACCAGTGGCGAAGGCGATTCTCTGGACTGTAACTGACGCTGAGGCTCGAAAGCGTGGGG
+
+what is its asv number? <- nvm this study didn't use asv numbers
+
+
+```{r}
+celatum <- "GCGAGCGTTGTCCGGATTTACTGGGCGTAAAGGGAGCGTAGGCGGACTTTTAAGTGAGATGTGAAATACCCGGGCTCAACTTGGGTGCTGCATTTCAAACTGGAAGTCTAGAGTGCAGGAGAGGAGAATGGAATTCCTAGTGTAGCGGTGAAATGCGTAGAGATTAGGAAGAACACCAGTGGCGAAGGCGATTCTCTGGACTGTAACTGACGCTGAGGCTCGAAAGCGTGGGG"
+
+
+
+otum <- as.data.frame(ps.aut.m@otu_table)
+
+otum_cont <- as.data.frame(ps.con.m@otu_table)
+
+
+
+to_plot.m<-otum[which(rownames(otum) == "GCGAGCGTTGTCCGGATTTACTGGGCGTAAAGGGAGCGTAGGCGGACTTTTAAGTGAGATGTGAAATACCCGGGCTCAACTTGGGTGCTGCATTTCAAACTGGAAGTCTAGAGTGCAGGAGAGGAGAATGGAATTCCTAGTGTAGCGGTGAAATGCGTAGAGATTAGGAAGAACACCAGTGGCGAAGGCGATTCTCTGGACTGTAACTGACGCTGAGGCTCGAAAGCGTGGGG", arr.ind = TRUE),]
+
+to_plot.m.cont<-otum_cont[which(rownames(otum_cont) == "GCGAGCGTTGTCCGGATTTACTGGGCGTAAAGGGAGCGTAGGCGGACTTTTAAGTGAGATGTGAAATACCCGGGCTCAACTTGGGTGCTGCATTTCAAACTGGAAGTCTAGAGTGCAGGAGAGGAGAATGGAATTCCTAGTGTAGCGGTGAAATGCGTAGAGATTAGGAAGAACACCAGTGGCGAAGGCGATTCTCTGGACTGTAACTGACGCTGAGGCTCGAAAGCGTGGGG", arr.ind = TRUE),]
+
+
+to_plot.m<-as.numeric(to_plot.m)
+
+to_plot.m.cont<-as.numeric(to_plot.m.cont)
+
+plot(density(to_plot.m))
+plot(density(to_plot.m.cont))
+
+
+t.test(to_plot.m,to_plot.m.cont)
+boxplot(to_plot.m,to_plot.m.cont, main = "C. celatum in males with and without autism",
+        ylab = "Number of reads (filtered and normalized)",
+        col=(c("mediumseagreen", "deepskyblue")))
+
+#we need dots
+
+View(to_plot.m)
+
+write.csv(to_plot.m, file = "m_aut.csv")
+write.csv(to_plot.m.cont, file = "m_cont.csv")
+
+
+```
+
+ggplotting it
+
+```{r}
+reads_males <- read.csv(file = "reads_celatum_males.csv")
+
+compare <- list(c("autism", "control"))
+
+males <- ggplot(reads_males, aes(x = type, y = reads_celatum, fill = type))+
+       geom_boxplot() +
+      geom_jitter() +
+  ylim(0,15)+
+  stat_compare_means(comparisons = compare, method=) +
+  scale_fill_manual(values = c("mediumseagreen", "deepskyblue")) +
+  ggtitle("C. celatum in males with and without autism")
+males
+
+ggsave("celatum_plot_males.png", plot = males, dpi = 800)
+
+```
+
+
+
+```{r}
+otuf_cont <- as.data.frame(ps.con.f@otu_table)
+
+
+to_plot.f<-otuf_cont[which(rownames(otuf_cont) == "GCGAGCGTTGTCCGGATTTACTGGGCGTAAAGGGAGCGTAGGCGGACTTTTAAGTGAGATGTGAAATACCCGGGCTCAACTTGGGTGCTGCATTTCAAACTGGAAGTCTAGAGTGCAGGAGAGGAGAATGGAATTCCTAGTGTAGCGGTGAAATGCGTAGAGATTAGGAAGAACACCAGTGGCGAAGGCGATTCTCTGGACTGTAACTGACGCTGAGGCTCGAAAGCGTGGGG", arr.ind = TRUE),]
+
+dim(to_plot.f)
+
+to_plot.f<-as.numeric(to_plot.f)
+
+otuf_aut <- as.data.frame(ps.aut.f@otu_table)
+to_plot.f.a<-otuf_aut[which(rownames(otuf_aut) == "GCGAGCGTTGTCCGGATTTACTGGGCGTAAAGGGAGCGTAGGCGGACTTTTAAGTGAGATGTGAAATACCCGGGCTCAACTTGGGTGCTGCATTTCAAACTGGAAGTCTAGAGTGCAGGAGAGGAGAATGGAATTCCTAGTGTAGCGGTGAAATGCGTAGAGATTAGGAAGAACACCAGTGGCGAAGGCGATTCTCTGGACTGTAACTGACGCTGAGGCTCGAAAGCGTGGGG", arr.ind = TRUE),]
+
+to_plot.f.a<-as.numeric(to_plot.f.a)
+dim(to_plot.f.a)
+
+boxplot(to_plot.f.a,to_plot.f, main = "C. celatum in females with and without autism",
+        ylab = "Number of reads (filtered and normalized)",
+        col=(c("mediumseagreen", "deepskyblue")))
+
+t.test(to_plot.f,to_plot.f.a)
+
+
+write.csv(to_plot.f.a, file = "f_aut.csv")
+write.csv(to_plot.f, file = "f_cont.csv")
+
+
+```
+
+ggplotting it
+
+```{r}
+reads_females <- read.csv(file = "reads_female.csv")
+
+compare <- list(c("autism", "control"))
+
+females <- ggplot(reads_females, aes(x = type, y = reads_celatum, fill = type))+
+       geom_boxplot() +
+      geom_jitter() +
+  ylim(0,15) +
+  stat_compare_means(comparisons = compare, method=) +
+  scale_fill_manual(values = c("mediumseagreen", "deepskyblue")) +
+  ggtitle("C. celatum in females with and without autism")
+
+females
+
+ggsave("celatum_plot_females.png", plot = females, dpi = 800)
+
+```
+
+t test to see if males and females differed in their c celatum
+
+```{r}
+t.test(reads_celatum ~ sex, reads_all)
+```
